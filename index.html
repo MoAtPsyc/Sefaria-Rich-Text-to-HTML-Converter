@@ -129,7 +129,7 @@
 
   <div class="panel">
     <div class="panel-label">Markup Output</div>
-    <textarea id="output"></textarea>
+    <textarea id="output" wrap="off"></textarea>
   </div>
 
   <div class="panel">
@@ -187,8 +187,8 @@ function convert(input, isHtml) {
     const id = div.id || '';
     const num = id.replace(/\D/g, '');
     if (num) {
-      // Get the footnote text, stripping the leading number
-      const text = processNodeInline(div).replace(/^\s*\d+\s*/, '').trim();
+      // Get the footnote text, stripping the leading number and collapsing newlines
+      const text = processNodeInline(div).replace(/\n/g, ' ').replace(/^\s*\d+\s*/, '').replace(/\s+/g, ' ').trim();
       footnotes[num] = text;
       div.remove();
     }
@@ -204,7 +204,7 @@ function convert(input, isHtml) {
         // Get the parent paragraph
         const para = a.closest('p') || a.parentElement;
         if (para) {
-          const text = processNodeInline(para).replace(/^\s*\d+\s*/, '').trim();
+          const text = processNodeInline(para).replace(/\n/g, ' ').replace(/^\s*\d+\s*/, '').replace(/\s+/g, ' ').trim();
           footnotes[num] = text;
           para.remove();
         }
@@ -219,7 +219,7 @@ function convert(input, isHtml) {
       const id = div.id || '';
       const num = id.replace(/\D/g, '');
       if (num) {
-        const text = processNodeInline(div).replace(/^\s*\d+\s*/, '').trim();
+        const text = processNodeInline(div).replace(/\n/g, ' ').replace(/^\s*\d+\s*/, '').replace(/\s+/g, ' ').trim();
         footnotes[num] = text;
         div.remove();
       }
