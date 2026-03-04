@@ -14,7 +14,7 @@
   }
   h1 { font-size: 20px; margin-bottom: 4px; }
   .subtitle { font-size: 13px; color: #888; margin-bottom: 20px; }
-  .container { max-width: 900px; margin: 0 auto; }
+  .container { max-width: 1400px; margin: 0 auto; }
   .panel {
     background: #fff;
     border: 1px solid #ddd;
@@ -29,13 +29,15 @@
     color: #999;
     margin-bottom: 8px;
   }
+  /* Paste area - compact */
   #paste-area {
-    min-height: 200px;
+    max-height: 120px;
+    overflow-y: auto;
     border: 2px dashed #ccc;
     border-radius: 6px;
-    padding: 16px;
-    font-size: 15px;
-    line-height: 1.6;
+    padding: 12px;
+    font-size: 13px;
+    line-height: 1.4;
     outline: none;
     transition: border-color 0.2s;
   }
@@ -44,8 +46,22 @@
     content: 'Paste from Microsoft Word here (Ctrl+V / Cmd+V)';
     color: #bbb;
   }
+  /* Side-by-side columns */
+  .columns {
+    display: flex;
+    gap: 16px;
+    align-items: stretch;
+  }
+  .columns > .panel {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  /* Markup output textarea */
   #output {
-    min-height: 200px;
+    flex: 1;
+    min-height: 400px;
     width: 100%;
     background: #1e1e1e;
     color: #d4d4d4;
@@ -55,9 +71,38 @@
     font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
     font-size: 13px;
     line-height: 1.6;
-    resize: vertical;
+    resize: none;
     white-space: pre;
     overflow-x: auto;
+  }
+  /* Preview pane */
+  #preview {
+    flex: 1;
+    min-height: 400px;
+    padding: 16px;
+    font-size: 15px;
+    line-height: 1.6;
+    border-radius: 6px;
+    background: #fafafa;
+    border: 2px solid transparent;
+    outline: none;
+    transition: border-color 0.2s;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+  #preview:focus {
+    border-color: #4a90d9;
+  }
+  #preview .footnote-marker {
+    font-size: 0.75em;
+    vertical-align: super;
+    color: #c00;
+    font-weight: bold;
+  }
+  #preview .footnote {
+    font-style: italic;
+    color: #666;
+    font-size: 0.9em;
   }
   .toolbar {
     display: flex;
@@ -89,32 +134,6 @@
     word-break: break-all;
     border-radius: 6px;
   }
-  /* Preview styling */
-  #preview {
-    min-height: 60px;
-    padding: 16px;
-    font-size: 15px;
-    line-height: 1.6;
-    border-radius: 6px;
-    background: #fafafa;
-    border: 2px solid transparent;
-    outline: none;
-    transition: border-color 0.2s;
-  }
-  #preview:focus {
-    border-color: #4a90d9;
-  }
-  #preview .footnote-marker {
-    font-size: 0.75em;
-    vertical-align: super;
-    color: #c00;
-    font-weight: bold;
-  }
-  #preview .footnote {
-    font-style: italic;
-    color: #666;
-    font-size: 0.9em;
-  }
 </style>
 </head>
 <body>
@@ -133,14 +152,15 @@
     <button onclick="toggleDebug()">Toggle Raw HTML</button>
   </div>
 
-  <div class="panel">
-    <div class="panel-label">Markup Output</div>
-    <textarea id="output" wrap="off"></textarea>
-  </div>
-
-  <div class="panel">
-    <div class="panel-label">Rendered Preview</div>
-    <div id="preview" contenteditable="true"></div>
+  <div class="columns">
+    <div class="panel">
+      <div class="panel-label">Markup Output</div>
+      <textarea id="output" wrap="off"></textarea>
+    </div>
+    <div class="panel">
+      <div class="panel-label">Rendered Preview</div>
+      <div id="preview" contenteditable="true"></div>
+    </div>
   </div>
 
   <div class="panel" id="debug-panel">
@@ -196,6 +216,8 @@ function reversePreview(html) {
   markup = markup.replace(/<br\s*\/?>/gi, '<br>');
   // Strip the inline styles we added in renderPreview
   markup = markup.replace(/ style="[^"]*"/gi, '');
+  // Clean &nbsp;
+  markup = markup.replace(/&nbsp;/g, ' ');
   // Collapse multiple newlines
   markup = markup.replace(/\n{3,}/g, '\n\n');
   return markup.trim();
@@ -214,7 +236,6 @@ function convert(input, isHtml) {
     const id = div.id || '';
     const num = id.replace(/\D/g, '');
     if (num) {
-      // Get the footnote text, stripping the leading number and collapsing newlines
       const text = processNodeInline(div).replace(/\n/g, ' ').replace(/^\s*\d+\s*/, '').replace(/\s+/g, ' ').trim();
       footnotes[num] = text;
       div.remove();
@@ -228,7 +249,6 @@ function convert(input, isHtml) {
       const name = a.name || a.id || '';
       if (name.match(/^_ftn\d+$/) && !name.match(/ref/)) {
         const num = name.replace(/\D/g, '');
-        // Get the parent paragraph
         const para = a.closest('p') || a.parentElement;
         if (para) {
           const text = processNodeInline(para).replace(/\n/g, ' ').replace(/^\s*\d+\s*/, '').replace(/\s+/g, ' ').trim();
@@ -266,6 +286,9 @@ function convert(input, isHtml) {
   result = result.replace(/<b><\/b>/g, '');
   result = result.replace(/<sup class="footnote-marker"><\/sup>/g, '');
 
+  // Replace &nbsp; with regular spaces
+  result = result.replace(/\u00A0/g, ' ');
+
   // Clean up whitespace
   result = result.replace(/\n{3,}/g, '\n\n');
   result = result.trim();
@@ -288,12 +311,10 @@ function processBlocks(node, blocks, footnotes) {
         const inline = processNodeInline(child, footnotes).trim();
         if (inline) blocks.push(inline);
       } else if (tag === 'br') {
-        // A bare <br> acts as block separator
         blocks.push('');
       } else if (['table', 'ul', 'ol', 'tbody', 'thead', 'blockquote', 'section', 'article'].includes(tag)) {
         processBlocks(child, blocks, footnotes);
       } else {
-        // Unknown block-level: try inline
         const inline = processNodeInline(child, footnotes).trim();
         if (inline) blocks.push(inline);
       }
@@ -316,11 +337,9 @@ function processNodeInline(node, footnotes) {
         const href = child.getAttribute('href') || '';
         const name = child.getAttribute('name') || child.id || '';
 
-        // In-text footnote reference: <a href="#_ftn1">
         if (href.match(/#_ftn\d+$/) || href.match(/#_edn\d+$/)) {
           const num = href.replace(/\D/g, '');
           let marker = `<sup class="footnote-marker">${num}</sup>`;
-          // If we have the footnote content, append it
           if (footnotes && footnotes[num]) {
             marker += `<i class="footnote">${footnotes[num]}</i>`;
           }
@@ -328,13 +347,11 @@ function processNodeInline(node, footnotes) {
           continue;
         }
 
-        // Footnote back-reference anchor: skip
         if (name.match(/^_ftnref\d+$/) || name.match(/^_ednref\d+$/)) {
           result += processNodeInline(child, footnotes);
           continue;
         }
 
-        // Regular link: just process contents
         result += processNodeInline(child, footnotes);
         continue;
       }
@@ -362,12 +379,10 @@ function processNodeInline(node, footnotes) {
       if (isSup) {
         const text = child.textContent.trim();
         if (text.match(/^\d+$/) && footnotes) {
-          // Check if inside an anchor to a footnote
           const parentA = child.closest('a[href*="_ftn"], a[href*="_edn"]');
           if (parentA) {
             // Will be handled by the <a> handler
           } else {
-            // Standalone superscript number — treat as footnote marker
             let marker = `<sup class="footnote-marker">${text}</sup>`;
             if (footnotes[text]) {
               marker += `<i class="footnote">${footnotes[text]}</i>`;
@@ -396,11 +411,9 @@ function processNodeInline(node, footnotes) {
 }
 
 function renderPreview(markup) {
-  // Convert our markup to displayable HTML
-  // The footnote-marker and footnote classes need proper rendering
   let html = markup;
-  // Replace <br>\n with <br>
-  html = html.replace(/<br>\n/g, '<br>');
+  // Convert newlines to <br> for HTML display
+  html = html.replace(/\n/g, '<br>');
   // Style footnote markers
   html = html.replace(/<sup class="footnote-marker">/g,
     '<sup class="footnote-marker" style="font-size:0.75em;vertical-align:super;color:#c00;font-weight:bold;cursor:help;">');
