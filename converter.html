@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Word → Markup Converter</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #f5f5f5;
+    padding: 24px;
+    color: #333;
+  }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  .subtitle { font-size: 13px; color: #888; margin-bottom: 20px; }
+  .container { max-width: 900px; margin: 0 auto; }
+  .panel {
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  .panel-label {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: #999;
+    margin-bottom: 8px;
+  }
+  #paste-area {
+    min-height: 200px;
+    border: 2px dashed #ccc;
+    border-radius: 6px;
+    padding: 16px;
+    font-size: 15px;
+    line-height: 1.6;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  #paste-area:focus { border-color: #4a90d9; }
+  #paste-area:empty::before {
+    content: 'Paste from Microsoft Word here (Ctrl+V / Cmd+V)';
+    color: #bbb;
+  }
+  #output {
+    min-height: 200px;
+    background: #1e1e1e;
+    color: #d4d4d4;
+    border-radius: 6px;
+    padding: 16px;
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+    user-select: all;
+  }
+  .toolbar {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+  button {
+    padding: 8px 16px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    background: #fff;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  button:hover { background: #f0f0f0; }
+  button.primary { background: #4a90d9; color: #fff; border-color: #4a90d9; }
+  button.primary:hover { background: #3a7bc8; }
+  #debug-panel { display: none; }
+  #debug-panel.visible { display: block; }
+  #raw-html {
+    max-height: 300px;
+    overflow: auto;
+    background: #f9f9f0;
+    padding: 12px;
+    font-family: monospace;
+    font-size: 11px;
+    white-space: pre-wrap;
+    word-break: break-all;
+    border-radius: 6px;
+  }
+  /* Preview styling */
+  #preview {
+    min-height: 60px;
+    padding: 16px;
+    font-size: 15px;
+    line-height: 1.6;
+    border-radius: 6px;
+    background: #fafafa;
+  }
+  #preview .footnote-marker {
+    font-size: 0.75em;
+    vertical-align: super;
+    color: #c00;
+    font-weight: bold;
+  }
+  #preview .footnote {
+    font-style: italic;
+    color: #666;
+    font-size: 0.9em;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Word → Markup Converter</h1>
+  <p class="subtitle">Paste rich text from Microsoft Word. Get formatted markup output.</p>
+
+  <div class="panel">
+    <div class="panel-label">Paste Here</div>
+    <div id="paste-area" contenteditable="true"></div>
+  </div>
+
+  <div class="toolbar">
+    <button class="primary" onclick="copyOutput()">Copy Output</button>
+    <button onclick="clearAll()">Clear</button>
+    <button onclick="toggleDebug()">Toggle Raw HTML</button>
+  </div>
+
+  <div class="panel">
+    <div class="panel-label">Markup Output</div>
+    <div id="output"></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-label">Rendered Preview</div>
+    <div id="preview"></div>
+  </div>
+
+  <div class="panel" id="debug-panel">
+    <div class="panel-label">Raw Clipboard HTML (Debug)</div>
+    <div id="raw-html"></div>
+  </div>
+</div>
+
+<script>
+const pasteArea = document.getElementById('paste-area');
+const output = document.getElementById('output');
+const preview = document.getElementById('preview');
+const rawHtmlEl = document.getElementById('raw-html');
+const debugPanel = document.getElementById('debug-panel');
+
+pasteArea.addEventListener('paste', function(e) {
+  e.preventDefault();
+  const html = e.clipboardData.getData('text/html');
+  const plain = e.clipboardData.getData('text/plain');
+
+  // Show the pasted content visually
+  if (html) {
+    pasteArea.innerHTML = html;
+    rawHtmlEl.textContent = html;
+  } else {
+    pasteArea.textContent = plain;
+    rawHtmlEl.textContent = '(no HTML in clipboard)';
+  }
+
+  const result = convert(html || plain, !!html);
+  output.textContent = result;
+  preview.innerHTML = renderPreview(result);
+});
+
+function convert(input, isHtml) {
+  if (!isHtml) return input;
+
+  const doc = new DOMParser().parseFromString(input, 'text/html');
+
+  // --- Extract footnotes from Word's footnote section ---
+  const footnotes = {};
+  // Word puts footnotes in divs with id like "ftn1" or in <a> with name/id "_ftn1"
+  const footnoteDivs = doc.querySelectorAll('div[id^="ftn"], div[style*="mso-element:footnote"]');
+  footnoteDivs.forEach(div => {
+    const id = div.id || '';
+    const num = id.replace(/\D/g, '');
+    if (num) {
+      // Get the footnote text, stripping the leading number
+      const text = processNodeInline(div).replace(/^\s*\d+\s*/, '').trim();
+      footnotes[num] = text;
+      div.remove();
+    }
+  });
+
+  // Also try: footnotes as <a name="_ftn1"> sections
+  if (Object.keys(footnotes).length === 0) {
+    const ftnAnchors = doc.querySelectorAll('a[name^="_ftn"], a[id^="_ftn"]');
+    ftnAnchors.forEach(a => {
+      const name = a.name || a.id || '';
+      if (name.match(/^_ftn\d+$/) && !name.match(/ref/)) {
+        const num = name.replace(/\D/g, '');
+        // Get the parent paragraph
+        const para = a.closest('p') || a.parentElement;
+        if (para) {
+          const text = processNodeInline(para).replace(/^\s*\d+\s*/, '').trim();
+          footnotes[num] = text;
+          para.remove();
+        }
+      }
+    });
+  }
+
+  // Also check for endnotes
+  if (Object.keys(footnotes).length === 0) {
+    const endnoteDivs = doc.querySelectorAll('div[id^="edn"], div[style*="mso-element:endnote"]');
+    endnoteDivs.forEach(div => {
+      const id = div.id || '';
+      const num = id.replace(/\D/g, '');
+      if (num) {
+        const text = processNodeInline(div).replace(/^\s*\d+\s*/, '').trim();
+        footnotes[num] = text;
+        div.remove();
+      }
+    });
+  }
+
+  // --- Process the body ---
+  const body = doc.body;
+  const blocks = [];
+  processBlocks(body, blocks, footnotes);
+
+  // Join blocks with <br>
+  let result = blocks.filter(b => b.trim()).join('<br>\n');
+
+  // Clean up whitespace
+  result = result.replace(/\n{3,}/g, '\n\n');
+  result = result.trim();
+
+  return result;
+}
+
+function processBlocks(node, blocks, footnotes) {
+  for (const child of node.childNodes) {
+    if (child.nodeType === Node.TEXT_NODE) {
+      const text = child.textContent.trim();
+      if (text) blocks.push(text);
+    } else if (child.nodeType === Node.ELEMENT_NODE) {
+      const tag = child.tagName.toLowerCase();
+      // Skip footnote separator lines
+      if (child.id && child.id.match(/^(ftn|edn)/i)) continue;
+      if (child.getAttribute('style')?.includes('mso-element:footnote')) continue;
+
+      if (['p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'tr'].includes(tag)) {
+        const inline = processNodeInline(child, footnotes).trim();
+        if (inline) blocks.push(inline);
+      } else if (tag === 'br') {
+        // A bare <br> acts as block separator
+        blocks.push('');
+      } else if (['table', 'ul', 'ol', 'tbody', 'thead', 'blockquote', 'section', 'article'].includes(tag)) {
+        processBlocks(child, blocks, footnotes);
+      } else {
+        // Unknown block-level: try inline
+        const inline = processNodeInline(child, footnotes).trim();
+        if (inline) blocks.push(inline);
+      }
+    }
+  }
+}
+
+function processNodeInline(node, footnotes) {
+  let result = '';
+
+  for (const child of node.childNodes) {
+    if (child.nodeType === Node.TEXT_NODE) {
+      result += child.textContent;
+    } else if (child.nodeType === Node.ELEMENT_NODE) {
+      const tag = child.tagName.toLowerCase();
+      const style = child.getAttribute('style') || '';
+
+      // Check for footnote reference links
+      if (tag === 'a') {
+        const href = child.getAttribute('href') || '';
+        const name = child.getAttribute('name') || child.id || '';
+
+        // In-text footnote reference: <a href="#_ftn1">
+        if (href.match(/#_ftn\d+$/) || href.match(/#_edn\d+$/)) {
+          const num = href.replace(/\D/g, '');
+          let marker = `<sup class="footnote-marker">${num}</sup>`;
+          // If we have the footnote content, append it
+          if (footnotes && footnotes[num]) {
+            marker += `<i class="footnote">${footnotes[num]}</i>`;
+          }
+          result += marker;
+          continue;
+        }
+
+        // Footnote back-reference anchor: skip
+        if (name.match(/^_ftnref\d+$/) || name.match(/^_ednref\d+$/)) {
+          result += processNodeInline(child, footnotes);
+          continue;
+        }
+
+        // Regular link: just process contents
+        result += processNodeInline(child, footnotes);
+        continue;
+      }
+
+      // Line break
+      if (tag === 'br') {
+        result += '<br>';
+        continue;
+      }
+
+      // Detect bold
+      const isBold = tag === 'b' || tag === 'strong' ||
+        style.match(/font-weight\s*:\s*(bold|[7-9]\d\d)/);
+
+      // Detect italic
+      const isItalic = tag === 'i' || tag === 'em' ||
+        style.match(/font-style\s*:\s*italic/);
+
+      // Detect superscript
+      const isSup = tag === 'sup' ||
+        style.match(/vertical-align\s*:\s*super/) ||
+        style.match(/mso-text-raise/);
+
+      // Check if this is a footnote reference by content (superscript number)
+      if (isSup) {
+        const text = child.textContent.trim();
+        if (text.match(/^\d+$/) && footnotes) {
+          // Check if inside an anchor to a footnote
+          const parentA = child.closest('a[href*="_ftn"], a[href*="_edn"]');
+          if (parentA) {
+            // Will be handled by the <a> handler
+          } else {
+            // Standalone superscript number — treat as footnote marker
+            let marker = `<sup class="footnote-marker">${text}</sup>`;
+            if (footnotes[text]) {
+              marker += `<i class="footnote">${footnotes[text]}</i>`;
+            }
+            result += marker;
+            continue;
+          }
+        }
+      }
+
+      const inner = processNodeInline(child, footnotes);
+
+      if (isBold && isItalic) {
+        result += `<b><i>${inner}</i></b>`;
+      } else if (isBold) {
+        result += `<b>${inner}</b>`;
+      } else if (isItalic) {
+        result += `<i>${inner}</i>`;
+      } else {
+        result += inner;
+      }
+    }
+  }
+
+  return result;
+}
+
+function renderPreview(markup) {
+  // Convert our markup to displayable HTML
+  // The footnote-marker and footnote classes need proper rendering
+  let html = markup;
+  // Replace <br>\n with <br>
+  html = html.replace(/<br>\n/g, '<br>');
+  // Style footnote markers
+  html = html.replace(/<sup class="footnote-marker">/g,
+    '<sup class="footnote-marker" style="font-size:0.75em;vertical-align:super;color:#c00;font-weight:bold;cursor:help;">');
+  // Style footnote content
+  html = html.replace(/<i class="footnote">/g,
+    '<i class="footnote" style="font-style:italic;color:#666;font-size:0.9em;"> ');
+  return html;
+}
+
+function copyOutput() {
+  const text = output.textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.querySelector('.primary');
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = 'Copy Output', 1500);
+  });
+}
+
+function clearAll() {
+  pasteArea.innerHTML = '';
+  output.textContent = '';
+  preview.innerHTML = '';
+  rawHtmlEl.textContent = '';
+}
+
+function toggleDebug() {
+  debugPanel.classList.toggle('visible');
+}
+</script>
+</body>
+</html>
