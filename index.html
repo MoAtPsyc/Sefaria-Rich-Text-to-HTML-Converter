@@ -224,8 +224,8 @@ function convert(input, isHtml) {
   const blocks = [];
   processBlocks(body, blocks, footnotes);
 
-  // Join blocks with <br>
-  let result = blocks.filter(b => b.trim()).join('<br>\n');
+  // Join blocks with newlines (each paragraph = new Excel row when pasted)
+  let result = blocks.filter(b => b.trim()).join('\n');
 
   // Clean up whitespace
   result = result.replace(/\n{3,}/g, '\n\n');
