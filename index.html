@@ -46,16 +46,16 @@
   }
   #output {
     min-height: 200px;
+    width: 100%;
     background: #1e1e1e;
     color: #d4d4d4;
+    border: none;
     border-radius: 6px;
     padding: 16px;
     font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
     font-size: 13px;
     line-height: 1.6;
-    white-space: pre-wrap;
-    word-break: break-word;
-    user-select: all;
+    resize: vertical;
   }
   .toolbar {
     display: flex;
@@ -127,7 +127,7 @@
 
   <div class="panel">
     <div class="panel-label">Markup Output</div>
-    <div id="output"></div>
+    <textarea id="output"></textarea>
   </div>
 
   <div class="panel">
@@ -163,8 +163,13 @@ pasteArea.addEventListener('paste', function(e) {
   }
 
   const result = convert(html || plain, !!html);
-  output.textContent = result;
+  output.value = result;
   preview.innerHTML = renderPreview(result);
+});
+
+// When user edits the output textarea, update the preview
+output.addEventListener('input', function() {
+  preview.innerHTML = renderPreview(output.value);
 });
 
 function convert(input, isHtml) {
@@ -226,6 +231,11 @@ function convert(input, isHtml) {
 
   // Join blocks with newlines (each paragraph = new Excel row when pasted)
   let result = blocks.filter(b => b.trim()).join('\n');
+
+  // Strip empty tags
+  result = result.replace(/<i><\/i>/g, '');
+  result = result.replace(/<b><\/b>/g, '');
+  result = result.replace(/<sup class="footnote-marker"><\/sup>/g, '');
 
   // Clean up whitespace
   result = result.replace(/\n{3,}/g, '\n\n');
@@ -372,7 +382,7 @@ function renderPreview(markup) {
 }
 
 function copyOutput() {
-  const text = output.textContent;
+  const text = output.value;
   navigator.clipboard.writeText(text).then(() => {
     const btn = document.querySelector('.primary');
     btn.textContent = 'Copied!';
@@ -382,7 +392,7 @@ function copyOutput() {
 
 function clearAll() {
   pasteArea.innerHTML = '';
-  output.textContent = '';
+  output.value = '';
   preview.innerHTML = '';
   rawHtmlEl.textContent = '';
 }
