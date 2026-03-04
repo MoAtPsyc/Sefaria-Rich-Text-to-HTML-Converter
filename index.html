@@ -97,6 +97,12 @@
     line-height: 1.6;
     border-radius: 6px;
     background: #fafafa;
+    border: 2px solid transparent;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  #preview:focus {
+    border-color: #4a90d9;
   }
   #preview .footnote-marker {
     font-size: 0.75em;
@@ -134,7 +140,7 @@
 
   <div class="panel">
     <div class="panel-label">Rendered Preview</div>
-    <div id="preview"></div>
+    <div id="preview" contenteditable="true"></div>
   </div>
 
   <div class="panel" id="debug-panel">
@@ -173,6 +179,27 @@ pasteArea.addEventListener('paste', function(e) {
 output.addEventListener('input', function() {
   preview.innerHTML = renderPreview(output.value);
 });
+
+// When user edits the preview, reverse-convert back to markup
+preview.addEventListener('input', function() {
+  output.value = reversePreview(preview.innerHTML);
+});
+
+function reversePreview(html) {
+  // Normalize browser contenteditable quirks back to our markup
+  let markup = html;
+  // Browsers wrap new lines in <div>...</div>
+  markup = markup.replace(/<div><br\s*\/?><\/div>/gi, '\n');
+  markup = markup.replace(/<div>/gi, '\n');
+  markup = markup.replace(/<\/div>/gi, '');
+  // <br> to newline (paragraph separator in our format)
+  markup = markup.replace(/<br\s*\/?>/gi, '<br>');
+  // Strip the inline styles we added in renderPreview
+  markup = markup.replace(/ style="[^"]*"/gi, '');
+  // Collapse multiple newlines
+  markup = markup.replace(/\n{3,}/g, '\n\n');
+  return markup.trim();
+}
 
 function convert(input, isHtml) {
   if (!isHtml) return input;
