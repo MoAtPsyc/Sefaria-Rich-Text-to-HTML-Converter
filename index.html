@@ -29,24 +29,7 @@
     color: #999;
     margin-bottom: 8px;
   }
-  /* Paste area - compact */
-  #paste-area {
-    max-height: 120px;
-    overflow-y: auto;
-    border: 2px dashed #ccc;
-    border-radius: 6px;
-    padding: 12px;
-    font-size: 13px;
-    line-height: 1.4;
-    outline: none;
-    transition: border-color 0.2s;
-  }
-  #paste-area:focus { border-color: #4a90d9; }
-  #paste-area:empty::before {
-    content: 'Paste from Microsoft Word here (Ctrl+V / Cmd+V)';
-    color: #bbb;
-  }
-  /* Side-by-side columns */
+  /* Three-column layout */
   .columns {
     display: flex;
     gap: 16px;
@@ -58,10 +41,26 @@
     display: flex;
     flex-direction: column;
   }
+  /* Paste area - left column */
+  #paste-area {
+    height: 600px;
+    border: none;
+    border-radius: 6px;
+    padding: 16px;
+    font-size: 15px;
+    line-height: 1.6;
+    outline: none;
+    overflow: auto;
+    white-space: nowrap;
+  }
+  #paste-area:empty::before {
+    content: 'Paste from Word here (Ctrl+V / Cmd+V)';
+    color: #bbb;
+    white-space: normal;
+  }
   /* Markup output textarea */
   #output {
-    flex: 1;
-    min-height: 400px;
+    height: 600px;
     width: 100%;
     background: #1e1e1e;
     color: #d4d4d4;
@@ -73,25 +72,18 @@
     line-height: 1.6;
     resize: none;
     white-space: pre;
-    overflow-x: auto;
+    overflow: auto;
   }
   /* Preview pane */
   #preview {
-    flex: 1;
-    min-height: 400px;
+    height: 600px;
     padding: 16px;
     font-size: 15px;
     line-height: 1.6;
     border-radius: 6px;
     background: #fafafa;
-    border: 2px solid transparent;
-    outline: none;
-    transition: border-color 0.2s;
-    overflow-x: auto;
+    overflow: auto;
     white-space: nowrap;
-  }
-  #preview:focus {
-    border-color: #4a90d9;
   }
   #preview .footnote-marker {
     font-size: 0.75em;
@@ -141,11 +133,6 @@
   <h1>Word → Markup Converter</h1>
   <p class="subtitle">Paste rich text from Microsoft Word. Get formatted markup output.</p>
 
-  <div class="panel">
-    <div class="panel-label">Paste Here</div>
-    <div id="paste-area" contenteditable="true"></div>
-  </div>
-
   <div class="toolbar">
     <button class="primary" onclick="copyOutput()">Copy Output</button>
     <button onclick="clearAll()">Clear</button>
@@ -154,12 +141,16 @@
 
   <div class="columns">
     <div class="panel">
-      <div class="panel-label">Markup Output</div>
-      <textarea id="output" wrap="off"></textarea>
+      <div class="panel-label">Pasted Text</div>
+      <div id="paste-area" contenteditable="true"></div>
     </div>
     <div class="panel">
       <div class="panel-label">Rendered Preview</div>
-      <div id="preview" contenteditable="true"></div>
+      <div id="preview"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-label">Markup Output</div>
+      <textarea id="output" wrap="off"></textarea>
     </div>
   </div>
 
@@ -200,28 +191,6 @@ output.addEventListener('input', function() {
   preview.innerHTML = renderPreview(output.value);
 });
 
-// When user edits the preview, reverse-convert back to markup
-preview.addEventListener('input', function() {
-  output.value = reversePreview(preview.innerHTML);
-});
-
-function reversePreview(html) {
-  // Normalize browser contenteditable quirks back to our markup
-  let markup = html;
-  // Browsers wrap new lines in <div>...</div>
-  markup = markup.replace(/<div><br\s*\/?><\/div>/gi, '\n');
-  markup = markup.replace(/<div>/gi, '\n');
-  markup = markup.replace(/<\/div>/gi, '');
-  // <br> to newline (paragraph separator in our format)
-  markup = markup.replace(/<br\s*\/?>/gi, '<br>');
-  // Strip the inline styles we added in renderPreview
-  markup = markup.replace(/ style="[^"]*"/gi, '');
-  // Clean &nbsp;
-  markup = markup.replace(/&nbsp;/g, ' ');
-  // Collapse multiple newlines
-  markup = markup.replace(/\n{3,}/g, '\n\n');
-  return markup.trim();
-}
 
 function convert(input, isHtml) {
   if (!isHtml) return input;
